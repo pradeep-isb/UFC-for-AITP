@@ -1,4 +1,6 @@
 streamlit
-markitdown
+markitdown[all]
 requests
 pathlib
+pandas
+openpyxl
