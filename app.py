@@ -3,97 +3,78 @@ import os
 from markitdown import MarkItDown
 import requests
 
-# Set page configuration for a professional look
-st.set_page_config(page_title="Universal Document Reader", page_icon="📝", layout="wide")
+def format_size(size_bytes):
+    """Converts bytes to a human-readable string (KB/MB)."""
+    if size_bytes == 0: return "0 B"
+    units = ("B", "KB", "MB", "GB")
+    i = 0
+    while size_bytes >= 1024 and i < len(units) - 1:
+        size_bytes /= 1024
+        i += 1
+    return f"{size_bytes:.2f} {units[i]}"
 
 def main():
-    st.title("📝 Universal Document-to-Text Converter")
-    st.markdown("""
-    Upload Office documents, PDFs, or HTML files to convert them into clean, 
-    LLM-ready Markdown text.
-    """)
+    st.set_page_config(page_title="Universal Doc Converter", page_icon="📝", layout="wide")
+    st.title("📝 Universal Document Reader")
 
-    # [1] Initialize the Engine
-    # MarkItDown handles the logic for Docx, Xlsx, Pptx, PDF, and HTML.
     mid = MarkItDown()
 
-    # [2] Interface: Upload Area (Supports multiple files)
     uploaded_files = st.file_uploader(
-        "Choose files or drag and drop", 
+        "Upload files", 
         type=["docx", "xlsx", "pptx", "pdf", "html", "htm", "zip"],
         accept_multiple_files=True
     )
 
     if uploaded_files:
-        st.divider()
-        
         for uploaded_file in uploaded_files:
             file_name = uploaded_file.name
             base_name = os.path.splitext(file_name)[0]
-            
-            # Create a unique temporary path for processing
             temp_path = f"temp_{file_name}"
             
             try:
-                # Save uploaded bytes to a temporary file
+                # Get Original Size
+                original_size = uploaded_file.size
+                
                 with open(temp_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
 
-                # [3] Resilience: Conversion with Error Handling
-                # Applying a conceptual timeout/agent logic via the engine wrapper
-                with st.spinner(f"Processing {file_name}..."):
+                with st.spinner(f"Converting {file_name}..."):
                     result = mid.convert(temp_path)
                     md_content = result.text_content
+                
+                # Calculate Converted Size
+                converted_size = len(md_content.encode('utf-8'))
+                
+                with st.expander(f"✅ Processed: {file_name}", expanded=True):
+                    # Create Tabs
+                    tab1, tab2 = st.tabs(["📄 Content Preview", "📊 File Size Comparison"])
+                    
+                    with tab1:
+                        st.text_area("Markdown Output", md_content, height=300, key=f"p_{file_name}")
+                        col1, col2 = st.columns(2)
+                        col1.download_button("📥 Download .md", md_content, f"{base_name}.md", "text/markdown", key=f"m_{file_name}")
+                        col2.download_button("📥 Download .txt", md_content, f"{base_name}.txt", "text/plain", key=f"t_{file_name}")
 
-                # [2] Instant Preview in a scrollable box
-                with st.expander(f"✅ {file_name}", expanded=True):
-                    st.text_area(
-                        label="Extracted Content Preview",
-                        value=md_content,
-                        height=350,
-                        key=f"preview_{file_name}"
-                    )
-
-                    # [2] Download Options
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        st.download_button(
-                            label="📥 Download .md",
-                            data=md_content,
-                            file_name=f"{base_name}_converted.md",
-                            mime="text/markdown",
-                            key=f"md_{file_name}"
-                        )
-                    with col2:
-                        st.download_button(
-                            label="📥 Download .txt",
-                            data=md_content,
-                            file_name=f"{base_name}_converted.txt",
-                            mime="text/plain",
-                            key=f"txt_{file_name}"
-                        )
+                    with tab2:
+                        # [NEW] File Size Comparison Logic
+                        reduction = 100 * (1 - (converted_size / original_size)) if original_size > 0 else 0
+                        
+                        st.subheader("Size Analysis")
+                        st.table({
+                            "Version": ["Original File", "Converted Text"],
+                            "Size": [format_size(original_size), format_size(converted_size)]
+                        })
+                        
+                        if reduction > 0:
+                            st.success(f"✨ Text version is **{reduction:.1f}% smaller** than the original.")
+                        else:
+                            st.info("The converted version is roughly the same size as the original.")
 
             except Exception:
-                # [3] Polite error handling for corrupted or unsupported files
                 st.error(f"⚠️ Could not read {file_name}. Please check the format.")
-            
             finally:
-                # Ensure the temporary file is deleted even if an error occurs
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
 
-    else:
-        st.info("Please upload one or more documents to begin.")
-
 if __name__ == "__main__":
-    # [3] Global Network Configuration (for internal web requests)
-    # This ensures any remote fetching done by dependencies follows your constraints
-    requests.utils.default_headers().update({
-        "User-Agent": "UniversalDocConverter/1.0 (Streamlit-App)"
-    })
-    
-    # Standard timeout for underlying request calls (conceptual application)
-    # In a production environment, this would be set in a config or env var
-    os.environ["HTTP_TIMEOUT"] = "5"
-    
     main()
